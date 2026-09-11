@@ -8,6 +8,8 @@ class ExecutionMode(str, Enum):
     WORKFLOW = "workflow"
     LLM = "llm"
     AGENT = "agent"
+    CLARIFICATION = "clarification"
+    REJECT = "reject"
 
 class TaskStatus(str, Enum):
     PENDING = "pending"
