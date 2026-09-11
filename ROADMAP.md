@@ -9,7 +9,10 @@
 [x] 05. Event system
 [x] 06. Configuration system
 [x] 07. Logging/tracing
-[ ] 08. STT abstraction
-[ ] 09. Whisper implementation
-[ ] 10. VAD
+[x] 08. STT abstraction
+[x] 09. Whisper implementation
+[x] 10. VAD
+[x] 11. Transcript normalization
+[ ] 12. Intent schema
+[ ] 13. Rule-based router
 [ ] ... [Further steps pending]
