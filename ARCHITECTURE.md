@@ -17,11 +17,11 @@ The system is a local/hybrid voice assistant that uses LLMs as a reasoner, not a
 - **DroidRun / UI Automation:** Used only as a fallback when native APIs are not available.
 - **LLM:** Used only when reasoning is required or for complex multi-step workflows.
 
-## Contracts
-Definitions for fundamental domain models are detailed in `core/contracts.py` (or equivalent documentation). This includes:
-- `Intent`
-- `Task`
-- `Skill`
-- `Tool`
-- `ExecutionResult`
-- `Context`
+## Contracts & Core Modules Developed
+- **Contracts (`core/contracts.py`):** `Intent`, `Task`, `Skill`, `Tool`, `ExecutionResult`, `Context`.
+- **Event System (`core/events.py`):** Async publish/subscribe bus.
+- **Config & Tracing (`core/config.py`, `core/logger.py`, `core/tracing.py`):** Observability and environment routing configurations.
+- **Audio Pipeline (`core/stt/`, `core/audio/`):** VAD and STT provider abstractions (with mock Whisper fallback).
+- **Routing & NLU (`core/router/`, `core/nlu/`):** Normalization, Entity extraction, Rule-based routing, and Classifier routing.
+- **LLM Gateway (`providers/llm/`):** Abstractions and mock implementations for `LocalLLM` and `CloudLLM` supporting `generate`, `stream`, `structured_output`, and `embeddings`.
+*(Potential Future Improvement: Hook up real embedding stores or vector databases for memory and intent classification).*

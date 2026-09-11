@@ -17,5 +17,6 @@
 [x] 13. Rule-based router
 [x] 14. Entity extraction
 [x] 15. Classifier router
-[ ] 16. LLM gateway
+[x] 16. LLM gateway
+[ ] 17. LLM router fallback
 [ ] ... [Further steps pending]
