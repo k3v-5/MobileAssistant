@@ -13,6 +13,8 @@
 [x] 09. Whisper implementation
 [x] 10. VAD
 [x] 11. Transcript normalization
-[ ] 12. Intent schema
-[ ] 13. Rule-based router
+[x] 12. Intent schema
+[x] 13. Rule-based router
+[ ] 14. Entity extraction
+[ ] 15. Classifier router
 [ ] ... [Further steps pending]

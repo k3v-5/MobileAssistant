@@ -5,7 +5,7 @@ from datetime import datetime
 class TraceRecord(BaseModel):
     trace_id: str
     task_id: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=datetime.now)
     intent: Optional[str] = None
     router_decision: Optional[str] = None
     tools_called: List[str] = Field(default_factory=list)

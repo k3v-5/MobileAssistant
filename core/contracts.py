@@ -40,7 +40,7 @@ class Intent(BaseModel):
     confidence: float
     entities: Dict[str, Any] = Field(default_factory=dict)
     source: str = "voice"
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=datetime.now)
     raw_transcript: Optional[str] = None
     normalized_text: Optional[str] = None
     locale: str = "es-ES"
@@ -63,7 +63,7 @@ class Task(BaseModel):
     confirmation_required: bool = False
     execution_mode: Optional[ExecutionMode] = None
     status: TaskStatus = TaskStatus.PENDING
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now)
     deadline: Optional[datetime] = None
     context: Optional[Context] = None
 
