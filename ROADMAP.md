@@ -16,5 +16,6 @@
 [x] 12. Intent schema
 [x] 13. Rule-based router
 [x] 14. Entity extraction
-[ ] 15. Classifier router
+[x] 15. Classifier router
+[ ] 16. LLM gateway
 [ ] ... [Further steps pending]
