@@ -1,178 +1,224 @@
-# Hybrid Voice Assistant — Architectural Baseline v2
+# Hybrid Voice Assistant — Architectural Baseline v3
 
-## 1. Objetivo del producto
-El producto final es un **asistente de voz residente en el dispositivo Android**. Es un sistema híbrido, offline-first y native-first.
-El asistente se compone de Python (actuando como el cerebro de NLU y razonamiento) embebido dentro de una aplicación Android escrita en Kotlin/Java (responsable de la integración nativa y el ciclo de vida del SO). La dependencia de modelos de Inteligencia Artificial (LLMs) se reduce al mínimo indispensable, utilizándolos como razonadores de fallback y no como controladores universales.
+Este documento define la arquitectura estricta del Hybrid Voice Assistant, estableciendo a Android como el entorno residente, Python como el cerebro lógico, Kotlin como el orquestador del ciclo de vida nativo y limitando el uso de IA (LLMs) a tareas no deterministas.
 
-## 2. Arquitectura física
-```
+---
+
+## 1. Product Goal
+Un asistente de voz residente 100% en el dispositivo Android, diseñado bajo la filosofía **Offline-first**, **Native-first**, **Deterministic-first**, y **Security-first**. Utiliza modelos LLM únicamente como razonadores de fallback, evitando que tomen el control directo del sistema operativo.
+
+## 2. Physical Architecture
+```text
 Android Device
  ├── Android OS
- │    ├── Kotlin/Java (Native Layer)
+ │    ├── Kotlin/Java (Native Host App)
  │    │    ├── Microphone / Audio APIs
- │    │    ├── Android Intents / APIs
- │    │    └── Android Bridge
+ │    │    ├── Android Intents / Providers / Managers
+ │    │    └── Android Bridge (Gateway to Python)
  │    │
- │    ├── Python (Embedded Core)
- │    │    ├── NLU / Router
+ │    ├── Python (Embedded Logic Core)
+ │    │    ├── NLU / Router / Dispatcher
  │    │    ├── Skills
  │    │    └── Local LLM / Cloud API Clients
  │    │
- │    └── Portal (Accessibility/UI Layer)
- │         └── UI Automation / Screen Capture
-```
-*Aclaración: El PC ya no es el host principal del sistema. ADB queda relegado puramente a desarrollo y debugging.*
-
-## 3. Arquitectura lógica
-El sistema separa tajantemente la interpretación (Python) de la ejecución profunda en el sistema operativo (Kotlin). Las tareas se originan desde voz, pasan por un ruteo estricto y, finalmente, se ejecutan en la capa más óptima disponible.
-
-## 4. Responsabilidades Kotlin
-- Lifecycle de la App y Foreground Services.
-- Gestión del micrófono y audio (AudioRecord).
-- Permisos del sistema Android.
-- Android Intents y Content Providers.
-- Notificaciones y TTS nativo.
-- Sensores.
-- Comunicación bidireccional (Android ↔ Python).
-
-## 5. Responsabilidades Python
-- Contratos de dominio (Pydantic).
-- NLU: Transcript, Normalización, Extracción de Entidades.
-- Router y Workflows.
-- Skills (lógica de negocio abstracta).
-- Memoria (estado conversacional).
-- Integración con LLM local y Cloud.
-- Orquestación del fallback hacia DroidRun.
-
-## 6. Frontera Kotlin/Python
-```
-Python Core
-      ↕
-Android Bridge
-      ↕
-Kotlin
-      ↕
-Android Framework
-```
-*Estado:* **ARCHITECTURAL DECISION PENDING**. (Por definir si se usará Chaquopy, proceso separado, JNI o bindings).
-
-## 7. Arquitectura Android
-La aplicación actúa como un servicio persistente que atiende peticiones de voz, con permisos suficientes para leer contactos, calendario, y dibujar sobre otras aplicaciones o usar accesibilidad si el fallback (Portal) lo requiere.
-
-## 8. Arquitectura del Core
-Las decisiones se toman secuencialmente.
-```
-Mic → STT → NLU → Router → Permission → Skill → Android Bridge
+ │    └── Portal (Accessibility Service)
+ │         └── UI Automation / Screen Capture (Fallback)
 ```
 
-## 9. Audio pipeline
-*Estado:* **ARCHITECTURAL DECISION PENDING**.
-- *Diseño conceptual:* Micrófono gestionado en Kotlin -> Wake Word local -> VAD -> STT local.
-- Determinar dónde cruza el audio hacia Python dependerá del rendimiento y consumo de batería.
-
-## 10. NLU pipeline
-Python recibe el transcript textual.
-Pasa por: `Normalization -> Entity Extraction -> Intent`.
-
-## 11. Router
-Ejecuta la clasificación del Intent en Execution Modes (`DIRECT`, `WORKFLOW`, `LLM`, `AGENT`).
-
-## 12. Skills
-Mecanismo principal para tareas deterministas. Una `Skill` (ej: `AlarmSkill`) no llama a Android directamente, sino que envía una orden validada al `Android Bridge`.
-
-## 13. Mobile Execution Layer
-Jerarquía de ejecución:
-```
-1. Deterministic
-2. Native Android APIs
-3. Local APIs / Content Providers
-4. Android Intents / Deep Links
-5. Accessibility / Portal
-6. Workflow determinista
-7. Local LLM
-8. Cloud LLM
-9. DroidRun Agent + LLM
-```
-
-## 14. Portal
-El Portal (`appwiz/droidrun` origin) se mantiene. Evoluciona a una capa de capacidades Android/UI estricta (AccessibilityExecutor), consumida sólo cuando no hay alternativa nativa.
-
-## 15. DroidRun
-El antiguo framework completo `mobilerun` se degrada a **Fallback**. Se invoca únicamente si el Router determina `ExecutionMode.AGENT` y las Skills/Intents fallaron en resolver la petición.
-
-## 16. LLM Gateway
-Prioridad de LLM:
-```
-No AI → Rules → Deterministic workflow → Local LLM → Cloud LLM
-```
-El LLM es un razonador opcional, sin acceso irrestricto a la API de Android. Todo output del LLM debe pasar por validación estructurada.
-
-## 17. Seguridad
-```
-User
- ↓
+## 3. Logical Architecture
+El flujo conceptual separa la decisión semántica de la ejecución física:
+```text
+Voice Input
+   ↓
+Audio Pipeline (VAD -> STT)
+   ↓
+Transcript
+   ↓
+NLU (Normalization -> Entity Extraction)
+   ↓
 Intent
- ↓
+   ↓
+Router (¿Qué tipo de operación es esta?)
+   ↓
+Planner (¿Qué pasos requiere? - Sólo para Workflows/Agents)
+   ↓
 Task
- ↓
-Validation
- ↓
-Permission
- ↓
-Confirmation
- ↓
-Execution
+   ↓
+Security Gate (Capability -> Android Permission -> Risk -> User Confirmation)
+   ↓
+Dispatcher (¿Qué componente debe ejecutar esta tarea?)
+   ↓
+Executor (¿Cómo ejecuto físicamente esta operación?)
+   ↓
+ExecutionResult
+   ↓
+TTS Response
 ```
-Toda operación peligrosa (`HIGH`, `CRITICAL`) requiere intervención explícita.
 
-## 18. Offline-first
-La lógica es:
-`¿Se puede resolver determinísticamente?` -> SI -> **EJECUTAR**.
-*(La falta de internet NUNCA debe obligar a usar un LLM local si existe regla estática)*.
+## 4. Runtime Ownership
+- **Runtime Owner:** Android Application. Kotlin inicia y detiene a Python. Si Android mata el proceso, el estado se pierde a menos que esté persistido.
+- **Lifecycle Owner:** Android Service / Foreground Service. Controla la vigencia de la app.
+- **Task Owner:** Python Core. Mantiene en memoria el estado del workflow. Si Python falla o reinicia, las tareas en memoria mueren.
+- **State Owner:** SQLite (Persistente) / RAM (Efímero).
 
-## 19. Memoria
-*Estado:* **ARCHITECTURAL DECISION PENDING**.
-Prioridad de adopción: RAM -> SQLite -> Semantic Storage.
+## 5. Kotlin Responsibilities
+- Control del ciclo de vida de la App y Foreground Services.
+- Acceso directo al hardware (Microphone) y TTS del OS.
+- Interacción con las APIs nativas (AlarmManager, ContentProviders, Intents).
+- Mostrar la Interfaz de Usuario y pop-ups de User Confirmation.
+- Gestión técnica de los Android Permissions.
+- Instanciación y puente de comunicación con el Runtime de Python.
 
-## 20. Persistencia
-La principal persistencia a considerar será SQLite (cuando sea requerida). Nada de bases de datos de servidor pesadas.
+## 6. Python Responsibilities
+- Procesamiento NLU (parsing de transcripciones, extracción de entidades).
+- Routing semántico (Reglas, Clasificador, Fallback LLM).
+- Planificación (Workflows deterministas o Agents).
+- Lógica de las "Skills" (preparar payloads validados).
+- Manejo de contexto y memoria conversacional.
+- Comunicación externa con APIs o LLMs.
 
-## 21. Event system
-*Estado:* **ARCHITECTURAL DECISION PENDING**.
-Se necesita definir cómo cruzarán los eventos críticos (ej. `speech_detected`, `confirmation_required`) la frontera Python/Kotlin.
+## 7. Python Runtime Strategy
+**ARCHITECTURAL DECISION PENDING**
+- *Opciones:* Chaquopy, Python embebido nativo (e.g., Kivy/BeeWare tools), JNI, proceso separado, bindings.
+- *Criterio de decisión:* Requerimos compatibilidad con Python 3.11+, asyncio, dependencias C como SQLite o bindings de Audio, y un peso razonable del APK. Se necesita un PoC antes de decidir.
 
-## 22. Observabilidad
-Trazas claras en Python usando Logging estructurado, midiendo Tokens (cuando aplique IA) y latencia.
+## 8. Kotlin/Python Boundary & 9. Android Bridge
+El **Android Bridge** es un canal tipado y seguro.
+- **No es:** Un objeto Android global pasado a Python.
+- **Es:** Un canal de paso de mensajes/comandos estructurados.
+```text
+Python Skill
+   ↓ { action: "set_alarm", payload: { time: "07:00", label: "gym" } }
+Android Bridge (JSON/Protobuf over IPC/JNI)
+   ↓
+Kotlin Router
+   ↓
+AlarmManager
+```
+- La comunicación debe soportar operaciones asíncronas, callbacks de éxito/error y timeouts.
 
-## 23. Testing
-Las pruebas se dividirán en: Tests Unitarios del Core Python, Tests del Android Bridge y Tests E2E en el dispositivo final.
+## 10. Audio Architecture
+- **Origen:** Micrófono Android (AudioRecord).
+- **Procesamiento continuo:** Se ejecuta en Kotlin dentro de un Foreground Service para evitar que Android mate el proceso y para optimizar batería. Python no debe mantener un hilo infinito escuchando bytes en bruto a través del JNI.
 
-## 24. Dependencias
-Las dependencias en Python deberán purgarse de las pesadas del backend cloud (si no son necesarias) para soportar el empaquetado móvil.
+## 11. STT
+**ARCHITECTURAL DECISION PENDING**
+- *Opciones:* Whisper.cpp, Faster-Whisper, Modelos nativos de Android (Google Speech Recognition offline), Silero.
+- *Criterio:* Menor latencia, menor huella de RAM y CPU. Preferiblemente procesado en Kotlin (vía C++ bindings) enviando solo el `Transcript` (string) a Python.
 
-## 25. Estado actual vs objetivo
-- **Actual:** El core vive en PC, usa ADB para mover el móvil y LlamaIndex como bucle infinito de razonamiento.
-- **Objetivo:** Core vive en móvil, invoca APIs de Kotlin y solo llama a la IA si no existe una regla determinista.
+## 12. Wake Word
+**ARCHITECTURAL DECISION PENDING**
+- *Opciones:* Porcupine, Snowboy (Kotlin/C++).
+- *Criterio:* Consumo energético casi nulo. **DEBE ejecutarse en Kotlin/C++**. Mandar audio continuo a Python para detectar el Wake Word destruiría la batería.
 
-## 26. Decisiones tomadas
-- El asistente es una App Android.
-- Python es NLU/Router. Kotlin es SO/Hardware.
-- DroidRun es fallback, no el orquestador principal.
-- Reglas estrictas de seguridad e interrupción antes de la ejecución.
+## 13. VAD
+Debería ejecutarse inmediatamente después del Wake Word en la capa nativa (Kotlin/C++) para aislar el chunk de voz y pasarlo al STT local.
 
-## 27. Decisiones pendientes
-- **ARCHITECTURAL DECISION PENDING:** Tecnología exacta para integrar Python en Android (Chaquopy vs JNI vs Otros).
-- **ARCHITECTURAL DECISION PENDING:** Tecnología para Wake word, STT Local y VAD dentro de Android vs Python.
-- **ARCHITECTURAL DECISION PENDING:** Mecanismo IPC / Eventos Python ↔ Kotlin.
+## 14. TTS
+La respuesta generada por Python viaja por el Android Bridge hacia Kotlin, donde se utiliza `Android TextToSpeech` nativo. No se deben usar APIs Cloud de TTS salvo configuración explícita.
 
-## 28. Riesgos
-- Compatibilidad y tamaño del APK al embeber Python y modelos LLM locales.
-- Alto consumo de batería si el VAD/Wake Word se gestionan en capas ineficientes de Python.
-- Complejidad en la comunicación multihilo (Android Lifecycle vs Python Asyncio).
+## 15. NLU & 16. Router
+- **NLU:** Limpia el transcript y extrae entidades mediante heurísticas deterministas.
+- **Router:** Determina la intención y asigna la estrategia de resolución. Responde "¿Qué tipo de operación es esta?". Usa reglas estáticas, y solo usa el Classifier o el Local LLM en caso de fallo.
 
-## 29. Plan de migración desde Mobilerun/DroidRun
-1. Congelar características de `mobilerun` (Legacy).
-2. Aislar `core/` y refinar sus contratos abstractos.
-3. Crear el proyecto Android base y probar el embedding de Python (PoC de frontera Kotlin/Python).
-4. Migrar el ruteo estático hacia la app móvil.
-5. Deprecar gradualmente la automatización PC-ADB a favor del Native Android Executor.
+## 17. Planner
+Responde "¿Qué pasos requiere?". Actúa solo cuando el Router dictamina un `WORKFLOW` o `AGENT` que implique más de una acción secuencial.
+
+## 18. Dispatcher
+Responde "¿Qué componente debe ejecutar esta tarea?".
+Toma el `Task` generado y lo despacha al executor correspondiente en la `Mobile Execution Layer`.
+
+## 19. Skills
+Objetos de lógica de negocio en Python. Ensamblan el comando, lo validan con Pydantic y envían la petición al `Android Bridge`. **Las Skills nunca controlan la UI directamente.**
+
+## 20. Mobile Execution Layer
+Jerarquía estricta de ejecución (Executor):
+1. **NativeExecutor:** Llamadas nativas mediante Android APIs (AlarmManager).
+2. **ContentProviderExecutor:** Manipulación de bases de datos Android (Contacts, Calendar).
+3. **IntentExecutor:** Envío de Android Intents o Deep Links (`vnd.youtube://`).
+4. **AccessibilityExecutor (Portal):** Usar los servicios de accesibilidad para manipular componentes UI nativos.
+5. **DroidRunExecutor:** Análisis visual puro de la pantalla y tapping X/Y comandado por LLM.
+
+## 21. Portal
+El Portal (`appwiz/droidrun`) existente se mantiene pero se readapta.
+- Se debe aislar de la automatización visual y centrarse en usar las APIs de `AccessibilityService` de Android de forma determinista para inyectar texto o clicks cuando los Intents no basten.
+
+## 22. DroidRun
+Auditoría del código legacy (`mobilerun/`):
+- `Agent/FastAgent`: **DEPRECATE** (Reemplazados por el nuevo Core).
+- `CLI`: **ISOLATE** (Útil para debug en PC, irrelevante en la app Android).
+- `Tools (UI)`: **ADAPT** (Se moverán a la Mobile Execution Layer como DroidRunExecutor).
+DroidRun se convierte exclusivamente en el fallback visual final cuando todas las capas superiores fallan o la app carece de APIs.
+
+## 23. LLM Gateway
+Abstracción de proveedores IA. El LLM es un razonador opcional, sin acceso directo a Android. Su output siempre se tipa mediante Pydantic (Structured Output) y se envía al Router/Planner.
+
+## 24. Security
+Frontera estricta. El LLM jamás toca la API de Android directamente.
+El flujo obliga a una validación:
+`Task → Capability Check → Android Permission Check → Risk Evaluation (LOW, MEDIUM, HIGH, CRITICAL) → User Confirmation → Execution`.
+
+## 25. Permissions & 26. Confirmation
+- **Android Permission:** Resuelto en Kotlin. Si falta un permiso (ej. `READ_CONTACTS`), la tarea aborta y solicita el permiso vía UI.
+- **User Confirmation:** Resuelto lógicamente. Operaciones `HIGH/CRITICAL` (enviar mensaje, comprar) detienen el flujo y envían un evento al Android Bridge para que Kotlin pida "Sí/No" por voz o pantalla.
+
+## 27. State, 28. Memory & 29. Persistence
+- **Ephemeral Runtime State (RAM):** Ejecución de Workflows, buffers de audio.
+- **Conversation State (RAM):** Contexto inmediato (¿De qué vídeo estábamos hablando?).
+- **User Preferences (SQLite):** Configuraciones (ej. App por defecto de música).
+- **Persistent Memory (SQLite):** Agendamiento y tareas pendientes aplazadas.
+
+## 30. Events
+- **EventBus Python:** Se mantiene para comunicación intra-proceso en Python (desacoplar logging, telemetría).
+- **Python-Kotlin:** No es un EventBus abierto. Se deben usar `Commands` (Petición síncrona/timeout) o `Callbacks` unidireccionales.
+
+## 31. Error Handling
+- **Fallo STT/NLU/Router:** Pide clarificación al usuario o falla silenciosamente sin llamar al LLM.
+- **Fallo Android API:** Reintenta o devuelve error. No hace fallback a DroidRun a menos que esté expresamente programado.
+- **Red offline:** Fallback instantáneo a lógica determinista/Local LLM. Si no se puede, informa error. Nunca intenta llegar a la red.
+
+## 32. Cancellation
+- **Flujo:** El usuario dice "Cancela". Esto genera un Intent prioritario.
+- **Acción:** Si hay un Workflow, se aborta usando `asyncio.cancel()`. Si hay una orden en el Android Bridge, se anula. Si requiere confirmación, se marca como rechazada.
+
+## 33. Offline Modes
+- **FULL OFFLINE:** Resolución determinista o modelo local.
+- **HYBRID / ONLINE:** El Router delega en Cloud LLM o el Dispatcher invoca a APIs web (ej. Spotify).
+*Si internet falla, el sistema se degrada a FULL OFFLINE sin interrumpir las capas nativas.*
+
+## 34. Observability
+Toda petición se acompaña de un `trace_id`. El Python logger debe emitir las salidas que luego serán capturadas por Logcat en Android.
+
+## 35. Testing
+- **Python Unit Tests:** Prueban routers, extracciones y Skills (Mockeando el Android Bridge).
+- **Android Unit Tests:** Prueban el Android Bridge y los Executors nativos (Mockeando a Python).
+- **Integration/E2E Tests:** Corren sobre un dispositivo real o emulador enviando audio simulado a Kotlin.
+
+## 36. Dependency Strategy
+Se purgarán dependencias pesadas innecesarias en el entorno Android. LlamaIndex será mitigado o retirado progresivamente a favor de llamadas directas a APIs o SDKs más ligeros para disminuir el tamaño del APK.
+
+## 37. Current State vs 38. Target State
+- **Current:** Scripts en PC controlando un Android por ADB y delegando todo el flujo UI a modelos en la nube.
+- **Target:** App Android ligera con Python embebido, manejando el hardware nativamente y usando IA local/nube como razonador final.
+
+## 39. Migration Strategy
+1. **NO IMPLEMENTAR NADA AÚN.**
+2. Crear PoC de la tecnología de embebido Python (Chaquopy/JNI).
+3. Construir el Android Bridge y la App Kotlin base.
+4. Mover el módulo `core/` (NLU, Router, Contratos) a Android.
+5. Deprecar DroidRun como núcleo y encapsularlo como DroidRunExecutor.
+
+## 40. Architectural Decisions
+- Python es el cerebro lógico, no el controlador del hardware.
+- Android/Kotlin es el dueño del ciclo de vida y del hardware.
+- Separación rígida entre Decisión (Router/Dispatcher) y Ejecución Física (Executors).
+- Seguridad impuesta mediante validación estructurada y confirmaciones manuales.
+
+## 41. Pending Decisions
+- **ARCHITECTURAL DECISION PENDING:** Estrategia exacta del Python Runtime en Android.
+- **ARCHITECTURAL DECISION PENDING:** Dónde procesar exactamente STT, VAD y Wake Word (se inclina por Kotlin/C++ por batería).
+- **ARCHITECTURAL DECISION PENDING:** Mecanismo físico del Android Bridge (IPC vs JNI vs local socket).
+
+## 42. Risks
+- Desempeño y peso del APK al incluir Python.
+- Bloqueo de la app por mala gestión del Lifecycle entre hilos de Android y el Event Loop de Python.
